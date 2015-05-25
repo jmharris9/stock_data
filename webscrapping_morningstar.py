@@ -9,8 +9,6 @@ from bs4 import BeautifulSoup
 
 statements = ['bs', 'is', 'cf']
 ###need to figure out currency conversion.
-###
-
 def sanatize_key(key):
     key=key.replace(" ","_")
     key=key.replace(",","")
@@ -110,7 +108,6 @@ def download_html(ticker, statement):
                     if key:
                         #cur.execute('SELECT count(*) FROM '+key+' WHERE Id = '+str(index))
                         cur.execute(sql_string)
-
         con.commit()
     except lite.Error, e:
         print 'Error %s:' %e.args[0]
@@ -122,7 +119,11 @@ def download_html(ticker, statement):
 def download_price(symbol):
     response = requests.get('http://quotes.morningstar.com/stock/c-header?&t=XNAS'+symbol)
     x = response.text
-    print x
+    html_body = html.fromstring(x)
+    keys = []
+    nodes = html_body.xpath("//*[contains(@id, 'last-price-value')]")
+    price = nodes[0].text.strip()
+    return price
 
 def calculate_croic(symbol, cur):
     cur.execute('SELECT count(*) FROM sqlite_master WHERE tbl_name = "croic" AND type = "table"')
@@ -243,8 +244,7 @@ def analyze_data(symb, data_dict, gd_client, gc):
 	test_write_to_gdocs(symb, str(dcf), data_dict, gd_client, gc)
 	return data_dict
 '''
-def run():
-    symbol = 'GILD'
+def download_data(symbol):
     for statement in statements:
         download_html(symbol ,statement)
     con = lite.connect('stock_data.db')
@@ -256,12 +256,7 @@ def run():
     con.commit()
     gr_array = croic[:-1]
     calculate_dcf(symbol, gr_array, cur)
-    #download_price(symbol)
-
-
-
-
-
+    download_price(symbol)
 
 if __name__ == "__main__":
     run()
