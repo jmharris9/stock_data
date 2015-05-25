@@ -44,8 +44,8 @@ def print_multi_year(row, row_to_analyze, worksheet, cell_format):
     worksheet.write_formula('K'+str(row),'{=IF(AND(G'+r+'>0,K'+r+'>0),(K'+r+'/G'+r+')^(1/5)-1,0)}',cell_format)
 
 def graham_analysis():
-    stock_symbols = get_industry_symbols()#sys.argv[2:]# Change between sector vs individual modes
-    title = sys.argv[1]
+    stock_symbols =["GILD"] #get_industry_symbols()#sys.argv[2:]# Change between sector vs individual modes
+    title = "test_master" #sys.argv[1]
     #stock_symbols = #["VVTV", "SPF", "TAIT", "CRV", "BZH", "MSN", "TUES", "HDNG"]
       #"GM", "USG", "MCO", "DVA", "DTV", "XOM", "PG", "WMT", "IBM", "KO"]#"CNTF", "GRVY", "XIN"]#"GILD","MRK","ABBV","VRTX","GSK","BMY","PFE","NVS"]
     graham_dict = {}
