@@ -1,10 +1,4 @@
-import pickle
-import plotly
-import plotly.plotly as py
-from pylab import *
-from plotly.graph_objs import *
 import sys
-from plotly.graph_objs import Figure,Data,Scatter
 import numpy as np
 import webscrapper
 import xlsxwriter
@@ -23,7 +17,6 @@ def get_industry_symbols():
     html_body = html.fromstring(response.text)
     links =  html_body.xpath('//div[@class="column one-half"]//a/@href')
     tickers = []
-    print links
     for link in links:
         if "ticker" in link:
             ticker= re.search('=.*', link).group(0)[1:]
@@ -44,16 +37,21 @@ def print_multi_year(row, row_to_analyze, worksheet, cell_format):
     worksheet.write_formula('K'+str(row),'{=IF(AND(G'+r+'>0,K'+r+'>0),(K'+r+'/G'+r+')^(1/5)-1,0)}',cell_format)
 
 def get_db_data(cur, key, stock_id):
-    cur.execute('SELECT * FROM '+key+' WHERE Id='+str(stock_id)+'')
-    return cur.fetchall()
+    cur.execute('SELECT * FROM '+key+' WHERE stock_id='+str(stock_id)+'')
+    if key=="croic":
+        data = np.array(cur.fetchall()[0])
+        data_corrected = data/100
+    else:
+        data =  np.array(cur.fetchall()[0])
+        data_corrected=data/1000000
+    return data_corrected
 
 def graham_analysis():
-    stock_symbols = ["GILD"]#get_industry_symbols()#sys.argv[2:]# Change between sector vs individual modes
-    title = "test"#sys.argv[1]
+    stock_symbols = get_industry_symbols()## Change between sector vs individual modes
+    title =sys.argv[1]
     #stock_symbols = #["VVTV", "SPF", "TAIT", "CRV", "BZH", "MSN", "TUES", "HDNG"]
       #"GM", "USG", "MCO", "DVA", "DTV", "XOM", "PG", "WMT", "IBM", "KO"]#"CNTF", "GRVY", "XIN"]#"GILD","MRK","ABBV","VRTX","GSK","BMY","PFE","NVS"]
     graham_dict = {}
-    gd_client, gc = webscrapper.gdocs_login()
     workbook = xlsxwriter.Workbook(title+'.xlsx')
     worksheet = workbook.add_worksheet()
 
@@ -158,23 +156,20 @@ def graham_analysis():
         i=1
         start = 74
         for stock in stock_symbols:
-
-            worksheet.write(col[i]+'1', stock, bold)
-            try:
-                data_dict = webscrapper.load_data_from_pickle(stock)
-            except IOError:
-                print stock +" Ticker not found"
+            success = ws.download_data(stock)
+            if success == False:
                 continue
+            worksheet.write(col[i]+'1', stock, bold)
+
             graham_dict[stock]={}
-            webscrapper.calculate_owners_earnings(data_dict)
             ##### CAPITALIZATION ######
             cur.execute('SELECT Id FROM Stocks WHERE symbol="'+stock+'"')
             index = cur.fetchall()[0][0]
             long_term_debt_bs = get_db_data(cur, "long_term_debt_bs", index)
-            print long_term_debt_bs[0][10]
-            worksheet.write(col[i]+'4', get_db_data(cur, "long_term_debt_bs", index)[0][10], num_format)
-            worksheet.write(col[i]+'5', get_db_data(cur, "preferred_stock_bs", index)[0][10], num_format)
-            worksheet.write(col[i]+'7', get_db_data(cur, "common_stock_bs", index)[0][10], num_format)
+            print long_term_debt_bs[10]
+            worksheet.write(col[i]+'4', get_db_data(cur, "long_term_debt_bs", index)[10], num_format)
+            worksheet.write(col[i]+'5', get_db_data(cur, "preferred_stock_bs", index)[10], num_format)
+            worksheet.write(col[i]+'7', get_db_data(cur, "weighted_average_shares_outstanding_diluted_is", index)[11], num_format)
             #gd_client, gc= webscrapper.gdocs_login()
             try:
                 price = float(ws.download_price(stock))
@@ -190,15 +185,15 @@ def graham_analysis():
             #graham_dict[stock]["total capitalization"]=graham_dict[stock]["bonds at par"]+ graham_dict[stock]["preferred stock equity"]+ graham_dict[stock]["common stock equity"]
             #if not(graham_dict[stock]["total capitalization"]==data_dict["total capitalization"][-1]):
             #    print "capitizaltion is fishy"
-            num_years = len(data_dict["operating revenue"])
+            num_years = 12
             #####  INCOME ACCOUNT #####
             last_annual = -1
-            worksheet.write(col[i]+'17', get_db_data(cur, "revenue_is", index)[0][10], num_format)
-            worksheet.write(col[i]+'18', get_db_data(cur, "ebitda_is", index)[0][10], num_format)
-            worksheet.write(col[i]+'19', get_db_data(cur, "depreciation_and_amortization_cf", index)[0][10], num_format)
+            worksheet.write(col[i]+'17', get_db_data(cur, "revenue_is", index)[11], num_format)
+            worksheet.write(col[i]+'18', get_db_data(cur, "ebitda_is", index)[11], num_format)
+            worksheet.write(col[i]+'19', get_db_data(cur, "depreciation_and_amortization_cf", index)[11], num_format)
             worksheet.write_formula(col[i]+'20', '{='+col[i]+'18-'+col[i]+'19}', num_format)
-            worksheet.write(col[i]+'21', get_db_data(cur, "interest_expense_is", index)[0][10], num_format)
-            worksheet.write(col[i]+'22', get_db_data(cur, "preferred_dividend_is", index)[0][10], num_format)
+            worksheet.write(col[i]+'21', get_db_data(cur, "interest_expense_is", index)[11], num_format)
+            worksheet.write(col[i]+'22', get_db_data(cur, "preferred_dividend_is", index)[11], num_format)
             worksheet.write_formula(col[i]+'23', '{='+col[i]+'20-'+col[i]+'21-'+col[i]+'22}', num_format)
             worksheet.write_formula(col[i]+'24', '{='+col[i]+'20*100/'+col[i]+'17}', num_format)
             worksheet.write_formula(col[i]+'25', '{='+col[i]+'20*100/'+col[i]+'11}', num_format)
@@ -222,19 +217,19 @@ def graham_analysis():
 
 
             #####  DIVIDENDS     #####
-            worksheet.write(col[i]+'43', get_db_data(cur, "dividend_paid_cf", index)[0][10])
+            worksheet.write(col[i]+'43', get_db_data(cur, "dividend_paid_cf", index)[11])
             worksheet.write_formula(col[i]+'44', '{=100*'+col[i]+'43/'+col[i]+'8}', num_format)
 
             #####  BALANCE SHEET #####
-            worksheet.write(col[i]+'47', get_db_data(cur, "total_cash_bs", index)[0][10], num_format)
-            worksheet.write(col[i]+'48', get_db_data(cur, "receivables_bs", index)[0][10], num_format)
-            worksheet.write(col[i]+'49', get_db_data(cur, "inventories_bs", index)[0][10], num_format)
+            worksheet.write(col[i]+'47', get_db_data(cur, "total_cash_bs", index)[10], num_format)
+            worksheet.write(col[i]+'48', get_db_data(cur, "receivables_bs", index)[10], num_format)
+            worksheet.write(col[i]+'49', get_db_data(cur, "inventories_bs", index)[10], num_format)
             worksheet.write_formula(col[i]+'50', '{='+col[i]+'47+'+col[i]+'48+'+col[i]+'49}', num_format)
-            worksheet.write(col[i]+'51', get_db_data(cur, "total_current_liabilities_bs", index)[0][10], num_format)
+            worksheet.write(col[i]+'51', get_db_data(cur, "total_current_liabilities_bs", index)[10], num_format)
             worksheet.write_formula(col[i]+'52', '{='+col[i]+'50-'+col[i]+'51}', num_format)
             worksheet.write_formula(col[i]+'53', '{='+col[i]+'50/'+col[i]+'51}', num_format)
-            worksheet.write(col[i]+'54', get_db_data(cur, "total_liabilities_bs", index)[0][10], num_format)
-            worksheet.write(col[i]+'55', get_db_data(cur, "total_current_assets_bs", index)[0][10]+get_db_data(cur, "total_non_current_assets_bs", index)[0][10]-get_db_data(cur, "total_liabilities_bs", index)[0][10], num_format)
+            worksheet.write(col[i]+'54', get_db_data(cur, "total_liabilities_bs", index)[10], num_format)
+            worksheet.write(col[i]+'55', get_db_data(cur, "total_current_assets_bs", index)[10]+get_db_data(cur, "total_non_current_assets_bs", index)[10], num_format)
             worksheet.write_formula(col[i]+'56', '{=('+col[i]+'47-'+col[i]+'54)/'+col[i]+'7}', num_format)
             worksheet.write_formula(col[i]+'57', '{=('+col[i]+'50-'+col[i]+'54)/'+col[i]+'7}', num_format)
             worksheet.write_formula(col[i]+'58', '{=('+col[i]+'55-'+col[i]+'54)/'+col[i]+'7}', num_format)
@@ -256,19 +251,19 @@ def graham_analysis():
             k=1
             print num_years
             while k<num_years:
-                worksheet.write(col[k]+str(start+1), get_db_data(cur, "ebitda_is", index)[0][k], num_format)
-                worksheet.write(col[k]+str(start+2), get_db_data(cur, "depreciation_and_amortization_cf", index)[0][k], num_format)
+                worksheet.write(col[k]+str(start+1), get_db_data(cur, "ebitda_is", index)[k], num_format)
+                worksheet.write(col[k]+str(start+2), get_db_data(cur, "depreciation_and_amortization_cf", index)[k], num_format)
                 worksheet.write_formula(col[k]+str(start+3), '{='+col[k]+str(start+1)+'-'+col[k]+str(start+2)+'}', num_format)
-                worksheet.write(col[k]+str(start+4), get_db_data(cur, "common_stock_bs", index)[0][k], num_format)
+                worksheet.write(col[k]+str(start+4), get_db_data(cur, "weighted_average_shares_outstanding_diluted_is", index)[k], num_format)
                 worksheet.write_formula(col[k]+str(start+5), '{='+col[k]+str(start+3)+'/'+col[k]+str(start+4)+'}', num_format)
-                worksheet.write_formula(col[k]+str(start+6), '{='+str(get_db_data(cur, "oe", index)[0][k])+'/'+str(col[k])+str(start+4)+'}', num_format)
-                worksheet.write(col[k]+str(start+9), get_db_data(cur, "croic", index)[0][10], percent_format)
+                worksheet.write_formula(col[k]+str(start+6), '{='+str(get_db_data(cur, "oe", index)[k])+'/'+str(col[k])+str(start+4)+'}', num_format)
+                worksheet.write(col[k]+str(start+9), get_db_data(cur, "croic", index)[k], percent_format)
                 k=k+1
             print_multi_year(start+7,start+5,worksheet, percent_format)
             print_multi_year(start+8,start+6,worksheet, percent_format)
-            worksheet.write_formula(col[k]+str(start+7), '{=MEDIAN(B'+str(start+7)+':'+col[k-1]+str(start+7)+')}', percent_format)
-            worksheet.write_formula(col[k]+str(start+8), '{=MEDIAN(B'+str(start+8)+':'+col[k-1]+str(start+8)+')}', percent_format)
-            worksheet.write_formula(col[k]+str(start+9), '{=MEDIAN(B'+str(start+9)+':'+col[k-1]+str(start+9)+')}', percent_format)
+            worksheet.write_formula(col[k]+str(start+7), '{=MEDIAN(B'+str(start+7)+':'+col[k-2]+str(start+7)+')}', percent_format)
+            worksheet.write_formula(col[k]+str(start+8), '{=MEDIAN(B'+str(start+8)+':'+col[k-2]+str(start+8)+')}', percent_format)
+            worksheet.write_formula(col[k]+str(start+9), '{=MEDIAN(B'+str(start+9)+':'+col[k-2]+str(start+9)+')}', percent_format)
             #worksheet.write(col[num_years]+str(start+2), -data_dict["depreciation (unrecognized)"][num_years-1])
 
             #########NEED TO FIGURE OUT WHAT TO DO WITH LESS THAN 10 yrs of data when computing growth rates
@@ -288,29 +283,8 @@ def graham_analysis():
     workbook.close()
 
 def run():
-  #ws.download_data("GILD")
   graham_analysis()
-  #test()
 
-def test():
-    try:
-        con = lite.connect('stock_data.db')
-        cur = con.cursor()
-        symbol = "GILD"
-        cur.execute('SELECT Id FROM Stocks WHERE symbol="'+symbol+'"')
-        index = cur.fetchall()[0][0]
-        sqlstring = 'SELECT * FROM oe WHERE Id="'+str(index)+'"'
-        print sqlstring
-        cur.execute('SELECT "1" FROM oe WHERE Id='+str(index)+'')
-        tester = cur.fetchall()
-        for x in tester:
-            print x
-    except lite.Error, e:
-        print 'Error %s:' %e.args[0]
-        sys.exit(1)
-    finally:
-        if con:
-            con.close()
 
 if __name__ == "__main__":
 	run()
