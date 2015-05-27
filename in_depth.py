@@ -23,7 +23,6 @@ def get_industry_symbols():
     html_body = html.fromstring(response.text)
     links =  html_body.xpath('//div[@class="column one-half"]//a/@href')
     tickers = []
-    print links
     for link in links:
         if "ticker" in link:
             ticker= re.search('=.*', link).group(0)[1:]
@@ -44,12 +43,12 @@ def print_multi_year(row, row_to_analyze, worksheet, cell_format):
     worksheet.write_formula('K'+str(row),'{=IF(AND(G'+r+'>0,K'+r+'>0),(K'+r+'/G'+r+')^(1/5)-1,0)}',cell_format)
 
 def graham_analysis():
-    stock_symbols =["GILD"] #get_industry_symbols()#sys.argv[2:]# Change between sector vs individual modes
-    title = "test_master" #sys.argv[1]
+    stock_symbols =get_industry_symbols()#sys.argv[2:]# Change between sector vs individual modes
+    title = sys.argv[1]
     #stock_symbols = #["VVTV", "SPF", "TAIT", "CRV", "BZH", "MSN", "TUES", "HDNG"]
       #"GM", "USG", "MCO", "DVA", "DTV", "XOM", "PG", "WMT", "IBM", "KO"]#"CNTF", "GRVY", "XIN"]#"GILD","MRK","ABBV","VRTX","GSK","BMY","PFE","NVS"]
     graham_dict = {}
-    gd_client, gc = webscrapper.gdocs_login()
+
     workbook = xlsxwriter.Workbook(title+'.xlsx')
     worksheet = workbook.add_worksheet()
 
@@ -334,5 +333,6 @@ def plot_breakdown_of_croic():
 
 def run():
   graham_analysis()
+
 if __name__ == "__main__":
 	run()
