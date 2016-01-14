@@ -45,10 +45,25 @@ def insert_data(symbol, key, data, cur):
     sql_string = sql_string+')'
     cur.execute(sql_string)
 
+def check_database(symbol, cur):
+    cur.execute('SELECT name FROM sqlite_master where type="table"')
+    tables = cur.fetchall()
+    cur.execute('SELECT Id FROM Stocks WHERE symbol="'+symbol+'"')
+    index = cur.fetchall()[0][0]
+    for t in tables:
+        if t[0] in ["Stocks","croic","oe"]:
+            continue
+        else:
+            cur.execute('SELECT * FROM '+t[0]+' WHERE stock_id ='+str(index))
+            present = cur.fetchall()
+            if present == []:
+                cur.execute('INSERT INTO '+t[0]+' VALUES ('+str(index)+',0,0,0,0,0,0,0,0,0,0,0)')
+
+
 ####### DOWNLOAD OF DATA #######
 def download_price(symbol):
     exchange = download_exchange(symbol)
-    response = requests.get('http://quotes.morningstar.com/stock/c-header?&t='+exchange+''+symbol)
+    response = requests.get('http://quotes.morningstar.com/stock/c-header?&t='+exchange+':'+symbol)
     x = response.text
     html_body = html.fromstring(x)
     keys = []
@@ -58,17 +73,19 @@ def download_price(symbol):
 
 def download_exchange(symbol):
     exchange = ystockquote.get_stock_exchange(symbol)
-    #print exchange
-    if exchange == '"NMS"':
+    if exchange == '"NMS"' or exchange =='"NGM"' or exchange =='"NCM"':
         exchange = "XNAS"
     elif exchange == '"NYQ"':
         exchange = "XNYS"
     elif exchange == '"ASE"':
         exchange = "XASE"
+    elif exchange == '"OBB"':
+        exchange = "XOTC"
+    elif exchange == '"PNK"':
+        exchange = "PINX"
     else:
+        print exchange
         return False
-        print "Exchange not found "
-    print symbol
     return exchange
 
 def download_html(symbol):
@@ -94,7 +111,10 @@ def download_html(symbol):
             response = requests.get("http://financials.morningstar.com/ajax/ReportProcess4HtmlAjax.html?t="+exchange+":"+symbol+"&region=usa&culture=en-US&productcode=MLE&cur=&reportType="+statement+"&period=12&dataType=A&order=asc&columnYear=10&curYearPart=1st5year&rounding=3&view=raw")
             x = response.text
             y=x.split('","')
-            htmlx = y[22][9:].replace('\\', '')
+            try:
+                htmlx = y[22][9:].replace('\\', '')
+            except IndexError:
+                return False
             html_body = html.fromstring(htmlx)
             keys = []
             nodes = html_body.xpath("//*[contains(@class, 'lbl')]")
@@ -142,7 +162,6 @@ def download_html(symbol):
                         if key:
                             #cur.execute('SELECT count(*) FROM '+key+' WHERE Id = '+str(index))
                             cur.execute(sql_string)
-        print con.execute('PRAGMA foreign_keys').fetchall()
         con.commit()
     except lite.Error, e:
         print 'Error %s:' %e.args[0]
@@ -160,23 +179,35 @@ def calculate_croic(symbol, cur):
         cur.execute('CREATE TABLE "croic" (stock_id INT PRIMARY KEY, "0" '+sql_type+', "1" '+sql_type+', "2" '+sql_type+', "3" '+sql_type+', "4" '+sql_type+', "5" '+sql_type+', "6" '+sql_type+', "7" '+sql_type+', "8" '+sql_type+', "9" '+sql_type+', "10" '+sql_type+', FOREIGN KEY(stock_id) REFERENCES Stocks(Id))')
     total_curr_liabs = get_data(symbol, "total_current_liabilities_bs", "*", cur)
     total_curr_assets = get_data(symbol, "total_current_assets_bs", "*", cur)
-    total_equity = get_data(symbol, "total_assets_bs", "*", cur)
-    total_liabs = get_data(symbol, "total_liabilities_bs", "*", cur)
-    income = get_data(symbol, "revenue_is", "*", cur)
+    total_equity = get_data(symbol, "total_stockholders_equity_bs", "*", cur)
+    total_noncurrent_liabs = get_data(symbol, "total_non_current_liabilities_bs", "*", cur)
+    income = get_data(symbol, "operating_income_is", "*", cur)
     income_tax = get_data(symbol, "provision_for_income_taxes_is", "*", cur)
     cash = get_data(symbol, "total_cash_bs", "*", cur)
     croic =[]
     i = 0
-    while i<len(total_curr_liabs):
+    while i<len(total_curr_liabs)-1:
         if income[i]>0:
             excess_cash = total_curr_liabs[i]-total_curr_assets[i]
-            if total_equity[i] + total_liabs[i]-total_curr_liabs[i]-cash[i]-excess_cash<=0:
+            if excess_cash<0:
+                excess_cash = 0
+            if total_equity[i] + total_noncurrent_liabs[i]-(cash[i]-excess_cash)<=0:
                 croic.append(0)
             else:
-                croic.append((income[i]-income_tax[i])*100/(total_equity[i] +total_liabs[i] - total_curr_liabs[i] - cash[i] -excess_cash))
+                croic.append((income[i]-income_tax[i])*100/(total_equity[i] +total_noncurrent_liabs[i] - (cash[i] -excess_cash)))
         else:
             croic.append(0)
         i=i+1
+    if income[i]>0:
+        excess_cash = total_curr_liabs[i-1]-total_curr_assets[i-1]
+        if excess_cash<0:
+            excess_cash = 0
+        if total_equity[i-1] + total_noncurrent_liabs[i-1]-(cash[i-1]-excess_cash)<=0:
+            croic.append(0)
+        else:
+            croic.append((income[i]-income_tax[i])*100/(total_equity[i-1] +total_noncurrent_liabs[i-1] - (cash[i-1] -excess_cash)))
+    else:
+        croic.append(0)
     insert_data(symbol, "croic", croic, cur)
 
 
@@ -200,7 +231,11 @@ def calculate_owners_earnings(symbol, cur):
 
 def calculate_multiyear(input_data):
   multiyear_data = []
-  first_year =np.nonzero(input_data)[0][0]
+  try:
+      first_year =np.nonzero(input_data)[0][0]
+  except IndexError:
+      multiyear=[0,0,0,0,0,0,0,0,0,0]
+      return multiyear
   num_years = 10-first_year
   if num_years<10:
 		for i in range(num_years):
@@ -258,21 +293,30 @@ def download_data(symbol):
     con = lite.connect('stock_data.db')
     con.execute('PRAGMA foreign_keys = ON')
     cur = con.cursor()
+    success = True
     success = download_html(symbol)
     if success == False:
         return False
+    check_database(symbol,cur)
+    con.commit()
     calculate_owners_earnings(symbol, cur)
     calculate_croic(symbol, cur)
     croic = get_data(symbol, "croic", "*", cur)
-    calculate_multiyear(croic)
+    success = calculate_multiyear(croic)
+    if success == False:
+        return False
     con.commit()
     gr_array = croic[:-1]
     calculate_dcf(symbol, gr_array, cur)
 
 
-def run():
-    download_data("TWFH")
 
+def run():
+    download_data("HAWK")
+    #con = lite.connect('stock_data.db')
+    #cur = con.cursor()
+    #check_database("AAV",cur)
+    #con.commit()
 if __name__ == "__main__":
     run()
 
