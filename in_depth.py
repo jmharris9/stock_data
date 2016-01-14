@@ -1,32 +1,33 @@
+<<<<<<< HEAD
 #this is master
 import pickle
 import plotly
 import plotly.plotly as py
 from pylab import *
 from plotly.graph_objs import *
+=======
+>>>>>>> in_depth_morningstar
 import sys
-from plotly.graph_objs import Figure,Data,Scatter
 import numpy as np
 import webscrapper
 import xlsxwriter
 import string
-import ystockquote
 import requests
 from lxml import html
 import sys
 import re
+import webscrapping_morningstar as ws
+import sqlite3 as lite
 
 #To Run: Call program python in_depth.py SPREADSHEET_NAME INDUSTRY
 def get_industry_symbols():
     industry = sys.argv[2]
-    response = requests.get("http://www.investorguide.com/industry/"+industry)
+    response = requests.get("https://biz.yahoo.com/"+industry)
     html_body = html.fromstring(response.text)
-    links =  html_body.xpath('//div[@class="column one-half"]//a/@href')
+    links =  html_body.xpath('//td[@bgcolor="ffffee"]//a[position()=2]')
     tickers = []
     for link in links:
-        if "ticker" in link:
-            ticker= re.search('=.*', link).group(0)[1:]
-            tickers.append(ticker)
+        tickers.append(link.text)
     return tickers
 
 def print_multi_year(row, row_to_analyze, worksheet, cell_format):
@@ -41,14 +42,36 @@ def print_multi_year(row, row_to_analyze, worksheet, cell_format):
     worksheet.write_formula('I'+str(row),'{=IF(AND(E'+r+'>0,I'+r+'>0),(I'+r+'/E'+r+')^(1/5)-1,0)}',cell_format)
     worksheet.write_formula('J'+str(row),'{=IF(AND(F'+r+'>0,J'+r+'>0),(J'+r+'/F'+r+')^(1/5)-1,0)}',cell_format)
     worksheet.write_formula('K'+str(row),'{=IF(AND(G'+r+'>0,K'+r+'>0),(K'+r+'/G'+r+')^(1/5)-1,0)}',cell_format)
+    worksheet.write_formula('L'+str(row),'{=IF(AND(H'+r+'>0,L'+r+'>0),(L'+r+'/H'+r+')^(1/5)-1,0)}',cell_format)
+
+def get_db_data(cur, key, stock_id):
+    cur.execute('SELECT * FROM '+key+' WHERE stock_id='+str(stock_id)+'')
+    if key=="croic":
+        data = np.array(cur.fetchall()[0])
+        data_corrected = data/100
+    else:
+        try:
+            data =  np.array(cur.fetchall()[0])
+        except IndexError:
+            data = np.array(0,0,0,0,0,0,0,0,0,0,0)
+        data_corrected=data/1000000
+    return data_corrected
 
 def graham_analysis():
+<<<<<<< HEAD
     stock_symbols =get_industry_symbols()#sys.argv[2:]# Change between sector vs individual modes
     title = sys.argv[1]
     #stock_symbols = #["VVTV", "SPF", "TAIT", "CRV", "BZH", "MSN", "TUES", "HDNG"]
       #"GM", "USG", "MCO", "DVA", "DTV", "XOM", "PG", "WMT", "IBM", "KO"]#"CNTF", "GRVY", "XIN"]#"GILD","MRK","ABBV","VRTX","GSK","BMY","PFE","NVS"]
     graham_dict = {}
 
+=======
+    stock_symbols = get_industry_symbols()## Change between sector vs individual modes
+    title =sys.argv[1]
+    #stock_symbols =["AAPL", "AGX", "BBSI", "BBY", "BPT", "BSQR", "BKE", "CALM", "CPLA", "CSCO", "CLCT", "DLX", "ENTA", "FLR", "GME", "GILD", "GPRO", "GHC", "ONE", "HPQ", "IQNT", "IDCC", "IILG", "ESI", "KING", "LCI", "MTEX", "MCFT", "MSB", "KORS", "MSGN", "NSR", "NLNK", "OUTR", "PDLI", "PETS", "PPC", "PBI", "PII", "QCOM", "RPXC", "TDC", "TIVO", "UNTD", "UTHR", "VDSI", "VEC", "VIAB", "VNCE", "WLDN"]
+      #"GM", "USG", "MCO", "DVA", "DTV", "XOM", "PG", "WMT", "IBM", "KO"]#"CNTF", "GRVY", "XIN"]#"GILD","MRK","ABBV","VRTX","GSK","BMY","PFE","NVS"]
+    graham_dict = {}
+>>>>>>> in_depth_morningstar
     workbook = xlsxwriter.Workbook(title+'.xlsx')
     worksheet = workbook.add_worksheet()
 
@@ -63,13 +86,16 @@ def graham_analysis():
     col = list(string.ascii_uppercase)
     number_of_tickers = len(stock_symbols)
     j=0
-    while len(col)<number_of_tickers:
+    if number_of_tickers >650:
+        letter_length = 650
+    else:
+        letter_length = number_of_tickers
+    while len(col)<letter_length:
         i=0
         while i<26:
             col.append(list(string.ascii_uppercase)[j]+list(string.ascii_uppercase)[i])
             i=i+1
         j=j+1
-
     ### SET WORKSHEET FORMATS
     worksheet.set_column(0, 0, 50)
     worksheet.conditional_format('B19:'+col[-1]+'23', {'type': 'cell', 'criteria':'<','value':0,'format':warning})
@@ -147,192 +173,146 @@ def graham_analysis():
     worksheet.write("A70", "Owners earnings per share growth")
     worksheet.write("A71", "CROIC")
 
+    try:
+        con = lite.connect('stock_data.db')
+        cur = con.cursor()
+        i=1
+        start = 74
+        for stock in stock_symbols:
+            success = ws.download_data(stock)
+            if success == False:
+                print stock
+                continue
+            worksheet.write(col[i]+'1', stock, bold)
 
-    i=1
-    start = 74
-    for stock in stock_symbols:
+            graham_dict[stock]={}
+            ##### CAPITALIZATION ######
+            cur.execute('SELECT Id FROM Stocks WHERE symbol="'+stock+'"')
+            index = cur.fetchall()[0][0]
+            long_term_debt_bs = get_db_data(cur, "long_term_debt_bs", index)
+            #print long_term_debt_bs[10]
+            worksheet.write(col[i]+'4', get_db_data(cur, "long_term_debt_bs", index)[10], num_format)
+            worksheet.write(col[i]+'5', get_db_data(cur, "preferred_stock_bs", index)[10], num_format)
+            worksheet.write(col[i]+'7', get_db_data(cur, "weighted_average_shares_outstanding_diluted_is", index)[11], num_format)
+            #gd_client, gc= webscrapper.gdocs_login()
+            try:
+                price = float(ws.download_price(stock))
+            except ValueError:
+                price = 0
+            worksheet.write(col[i]+'8', price, num_format)
+            worksheet.write_formula(col[i]+'9', '{=('+col[i]+'5*'+col[i]+'6)}', num_format)
+            worksheet.write_formula(col[i]+'10', '{=('+col[i]+'7*'+col[i]+'8)}', num_format)
+            worksheet.write_formula(col[i]+'11', '{='+col[i]+'4+'+col[i]+'9+'+col[i]+'10}', num_format)
+            worksheet.write_formula(col[i]+'12', '{='+col[i]+'4/'+col[i]+'11}', num_format)
+            worksheet.write_formula(col[i]+'13', '{='+col[i]+'9/'+col[i]+'11}', num_format)
+            worksheet.write_formula(col[i]+'14', '{='+col[i]+'10/'+col[i]+'11}', num_format)
+            #graham_dict[stock]["total capitalization"]=graham_dict[stock]["bonds at par"]+ graham_dict[stock]["preferred stock equity"]+ graham_dict[stock]["common stock equity"]
+            #if not(graham_dict[stock]["total capitalization"]==data_dict["total capitalization"][-1]):
+            #    print "capitizaltion is fishy"
+            num_years = 12
+            #####  INCOME ACCOUNT #####
+            last_annual = -1
+            worksheet.write(col[i]+'17', get_db_data(cur, "revenue_is", index)[11], num_format)
+            worksheet.write(col[i]+'18', get_db_data(cur, "ebitda_is", index)[11], num_format)
+            worksheet.write(col[i]+'19', get_db_data(cur, "depreciation_and_amortization_cf", index)[11], num_format)
+            worksheet.write_formula(col[i]+'20', '{='+col[i]+'18-'+col[i]+'19}', num_format)
+            worksheet.write(col[i]+'21', get_db_data(cur, "interest_expense_is", index)[11], num_format)
+            worksheet.write(col[i]+'22', get_db_data(cur, "preferred_dividend_is", index)[11], num_format)
+            worksheet.write_formula(col[i]+'23', '{='+col[i]+'20-'+col[i]+'21-'+col[i]+'22}', num_format)
+            worksheet.write_formula(col[i]+'24', '{='+col[i]+'20*100/'+col[i]+'17}', num_format)
+            worksheet.write_formula(col[i]+'25', '{='+col[i]+'20*100/'+col[i]+'11}', num_format)
 
-        worksheet.write(col[i]+'1', stock, bold)
-        try:
-            data_dict = webscrapper.load_data_from_pickle(stock)
-        except IOError:
-            print stock +" Ticker not found"
-            continue
-        graham_dict[stock]={}
-        webscrapper.calculate_owners_earnings(data_dict)
-        ##### CAPITALIZATION ######
-        worksheet.write(col[i]+'4', data_dict["long-term debt"][-1])
-        worksheet.write(col[i]+'5', data_dict["preferred shares"][-1])
-        worksheet.write(col[i]+'7', data_dict["total common shares out"][-1])
-        #gd_client, gc= webscrapper.gdocs_login()
-        try:
-            price = float(ystockquote.get_price(stock))
-        except ValueError:
-            price = 0
-        worksheet.write(col[i]+'8', price, num_format)
-        worksheet.write_formula(col[i]+'9', '{=('+col[i]+'5*'+col[i]+'6)}', num_format)
-        worksheet.write_formula(col[i]+'10', '{=('+col[i]+'7*'+col[i]+'8)}', num_format)
-        worksheet.write_formula(col[i]+'11', '{='+col[i]+'4+'+col[i]+'9+'+col[i]+'10}', num_format)
-        worksheet.write_formula(col[i]+'12', '{='+col[i]+'4/'+col[i]+'11}', num_format)
-        worksheet.write_formula(col[i]+'13', '{='+col[i]+'9/'+col[i]+'11}', num_format)
-        worksheet.write_formula(col[i]+'14', '{='+col[i]+'10/'+col[i]+'11}', num_format)
-        #graham_dict[stock]["total capitalization"]=graham_dict[stock]["bonds at par"]+ graham_dict[stock]["preferred stock equity"]+ graham_dict[stock]["common stock equity"]
-        #if not(graham_dict[stock]["total capitalization"]==data_dict["total capitalization"][-1]):
-        #    print "capitizaltion is fishy"
-        num_years = len(data_dict["operating revenue"])
-        #####  INCOME ACCOUNT #####
-        last_annual = -1
-        worksheet.write(col[i]+'17', data_dict["operating revenue"][last_annual])
-        worksheet.write(col[i]+'18', data_dict["EBITDA"][last_annual])
-        worksheet.write(col[i]+'19', -data_dict["depreciation (unrecognized)"][last_annual])
-        worksheet.write_formula(col[i]+'20', '{='+col[i]+'18-'+col[i]+'19}', num_format)
-        worksheet.write(col[i]+'21', data_dict["interest expense"][last_annual])
-        worksheet.write(col[i]+'22', data_dict["preferred dividends"][last_annual])
-        worksheet.write_formula(col[i]+'23', '{='+col[i]+'20-'+col[i]+'21-'+col[i]+'22}', num_format)
-        worksheet.write_formula(col[i]+'24', '{='+col[i]+'20*100/'+col[i]+'17}', num_format)
-        worksheet.write_formula(col[i]+'25', '{='+col[i]+'20*100/'+col[i]+'11}', num_format)
+            #####  CALCULATIONS   #####
+            worksheet.write_formula(col[i]+'28', '{='+col[i]+'20/'+col[i]+'21}', num_format)
+            worksheet.write_formula(col[i]+'29', '{='+col[i]+'20/'+col[i]+'22}', num_format)
+            worksheet.write_formula(col[i]+'30', '{='+col[i]+'23/'+col[i]+'7}', num_format)
+            worksheet.write_formula(col[i]+'31', '{=100*'+col[i]+'30/'+col[i]+'8}', num_format)
+            worksheet.write_formula(col[i]+'32', '{='+col[i]+'22/'+col[i]+'5}', num_format)
+            worksheet.write_formula(col[i]+'33', '{='+col[i]+'32/'+col[i]+'6}', num_format)
+            worksheet.write_formula(col[i]+'34', '{='+col[i]+'17/'+col[i]+'10}', num_format)
+            worksheet.write_formula(col[i]+'35', '{='+col[i]+'17/'+col[i]+'9}', num_format)
 
-        #####  CALCULATIONS   #####
-        worksheet.write_formula(col[i]+'28', '{='+col[i]+'20/'+col[i]+'21}', num_format)
-        worksheet.write_formula(col[i]+'29', '{='+col[i]+'20/'+col[i]+'22}', num_format)
-        worksheet.write_formula(col[i]+'30', '{='+col[i]+'23/'+col[i]+'7}', num_format)
-        worksheet.write_formula(col[i]+'31', '{=100*'+col[i]+'30/'+col[i]+'8}', num_format)
-        worksheet.write_formula(col[i]+'32', '{='+col[i]+'22/'+col[i]+'5}', num_format)
-        worksheet.write_formula(col[i]+'33', '{='+col[i]+'32/'+col[i]+'6}', num_format)
-        worksheet.write_formula(col[i]+'34', '{='+col[i]+'17/'+col[i]+'10}', num_format)
-        worksheet.write_formula(col[i]+'35', '{='+col[i]+'17/'+col[i]+'9}', num_format)
+            #####  HISTORICAL AVERAGE #####
 
-        #####  HISTORICAL AVERAGE #####
-
-        worksheet.write_formula(col[i]+'38', '{=AVERAGE('+col[1]+str(start+3)+':'+col[num_years]+str(start+3)+')/'+col[i]+'21}', num_format)
-        worksheet.write_formula(col[i]+'39', '{=AVERAGE('+col[1]+str(start+3)+':'+col[num_years]+str(start+3)+')/'+col[i]+'7'+'}', num_format)
-        worksheet.write_formula(col[i]+'40', '{=100*'+col[i]+'39/'+col[i]+'8}', num_format)
+            worksheet.write_formula(col[i]+'38', '{=AVERAGE('+col[1]+str(start+3)+':'+col[num_years]+str(start+3)+')/'+col[i]+'21}', num_format)
+            worksheet.write_formula(col[i]+'39', '{=AVERAGE('+col[1]+str(start+3)+':'+col[num_years]+str(start+3)+')/'+col[i]+'7'+'}', num_format)
+            worksheet.write_formula(col[i]+'40', '{=100*'+col[i]+'39/'+col[i]+'8}', num_format)
 
 
 
-        #####  DIVIDENDS     #####
-        worksheet.write(col[i]+'43', data_dict["Dividends Paid Per Share (DPS)"][last_annual])
-        worksheet.write_formula(col[i]+'44', '{=100*'+col[i]+'43/'+col[i]+'8}', num_format)
+            #####  DIVIDENDS     #####
+            worksheet.write(col[i]+'43', get_db_data(cur, "dividend_paid_cf", index)[11])
+            worksheet.write_formula(col[i]+'44', '{=100*'+col[i]+'43/'+col[i]+'8}', num_format)
 
-        #####  BALANCE SHEET #####
-        worksheet.write(col[i]+'47', data_dict["cash & equivalents"][-1]+data_dict["restricted cash"][-1]+data_dict["marketable securities"][-1])
-        worksheet.write(col[i]+'48', data_dict["receivables"][-1])
-        worksheet.write(col[i]+'49', data_dict["inventories"][-1])
-        worksheet.write_formula(col[i]+'50', '{='+col[i]+'47+'+col[i]+'48+'+col[i]+'49}', num_format)
-        worksheet.write(col[i]+'51', data_dict["total current liabilities"][-1])
-        worksheet.write_formula(col[i]+'52', '{='+col[i]+'50-'+col[i]+'51}', num_format)
-        worksheet.write_formula(col[i]+'53', '{='+col[i]+'50/'+col[i]+'51}', num_format)
-        worksheet.write(col[i]+'54', data_dict["total liabilities"][-1])
-        worksheet.write(col[i]+'55', data_dict["total current assets"][-1]+data_dict["total fixed assets"][-1]-data_dict["total liabilities"][-1])
-        worksheet.write_formula(col[i]+'56', '{=('+col[i]+'47-'+col[i]+'54)/'+col[i]+'7}', num_format)
-        worksheet.write_formula(col[i]+'57', '{=('+col[i]+'50-'+col[i]+'54)/'+col[i]+'7}', num_format)
-        worksheet.write_formula(col[i]+'58', '{=('+col[i]+'55-'+col[i]+'54)/'+col[i]+'7}', num_format)
+            #####  BALANCE SHEET #####
+            worksheet.write(col[i]+'47', get_db_data(cur, "total_cash_bs", index)[10], num_format)
+            worksheet.write(col[i]+'48', get_db_data(cur, "receivables_bs", index)[10], num_format)
+            worksheet.write(col[i]+'49', get_db_data(cur, "inventories_bs", index)[10], num_format)
+            worksheet.write_formula(col[i]+'50', '{='+col[i]+'47+'+col[i]+'48+'+col[i]+'49}', num_format)
+            worksheet.write(col[i]+'51', get_db_data(cur, "total_current_liabilities_bs", index)[10], num_format)
+            worksheet.write_formula(col[i]+'52', '{='+col[i]+'50-'+col[i]+'51}', num_format)
+            worksheet.write_formula(col[i]+'53', '{='+col[i]+'50/'+col[i]+'51}', num_format)
+            worksheet.write(col[i]+'54', get_db_data(cur, "total_liabilities_bs", index)[10], num_format)
+            worksheet.write(col[i]+'55', get_db_data(cur, "total_current_assets_bs", index)[10]+get_db_data(cur, "total_non_current_assets_bs", index)[10], num_format)
+            worksheet.write_formula(col[i]+'56', '{=('+col[i]+'47-'+col[i]+'54)/'+col[i]+'7}', num_format)
+            worksheet.write_formula(col[i]+'57', '{=('+col[i]+'50-'+col[i]+'54)/'+col[i]+'7}', num_format)
+            worksheet.write_formula(col[i]+'58', '{=('+col[i]+'55-'+col[i]+'54)/'+col[i]+'7}', num_format)
 
-        #####  SUPPLEMENTAL DATA #####
-        worksheet.write_formula(col[i]+'61', '{=1-(1/'+col[i]+'31)/AVERAGE('+col[i]+'69:'+col[i]+'71)}', percent_format)
+            #####  SUPPLEMENTAL DATA #####
+            worksheet.write_formula(col[i]+'61', '{=1-(1/'+col[i]+'31)/AVERAGE('+col[i]+'69:'+col[i]+'71)}', percent_format)
 
-        #####  TREND FIGURE  #####
-        worksheet.write("A"+str(start), "HISTORICAL DATA FOR " + stock, bold)
-        worksheet.write("A"+str(start+1), "EBITDA")
-        worksheet.write("A"+str(start+2), "Depreciation*")
-        worksheet.write("A"+str(start+3), "Net available for bond interest (EBIT)")
-        worksheet.write("A"+str(start+4), "Common shares outstanding")
-        worksheet.write("A"+str(start+5), "Earned per share of common stock")
-        worksheet.write("A"+str(start+6), "Owners Earnings per share")
-        worksheet.write("A"+str(start+7), "Earned per share of common stock growth")
-        worksheet.write("A"+str(start+8), "Owners Earnings per share growth")
-        worksheet.write("A"+str(start+9), "Croic")
-        k=0
-        print num_years
-        while k<num_years:
-            worksheet.write(col[k+1]+str(start+1), data_dict["EBITDA"][k], num_format)
-            worksheet.write(col[k+1]+str(start+2), data_dict["EBITDA"][k]-data_dict["operating profit after depreciation"][k], num_format)
-            worksheet.write_formula(col[k+1]+str(start+3), '{='+col[k+1]+str(start+1)+'-'+col[k+1]+str(start+2)+'}', num_format)
-            worksheet.write(col[k+1]+str(start+4), data_dict["total common shares out"][k], num_format)
-            worksheet.write_formula(col[k+1]+str(start+5), '{='+col[k+1]+str(start+3)+'/'+col[k+1]+str(start+4)+'}', num_format)
-            worksheet.write_formula(col[k+1]+str(start+6), '{='+str(data_dict["owners earnings"][k])+'/'+str(col[k+1])+str(start+4)+'}', num_format)
-            worksheet.write(col[k+1]+str(start+9), data_dict["croic"][k]/100, percent_format)
-            k=k+1
-        print_multi_year(start+7,start+5,worksheet, percent_format)
-        print_multi_year(start+8,start+6,worksheet, percent_format)
-        worksheet.write_formula(col[k+1]+str(start+7), '{=MEDIAN(B'+str(start+7)+':'+col[k]+str(start+7)+')}', percent_format)
-        worksheet.write_formula(col[k+1]+str(start+8), '{=MEDIAN(B'+str(start+8)+':'+col[k]+str(start+8)+')}', percent_format)
-        worksheet.write_formula(col[k+1]+str(start+9), '{=MEDIAN(B'+str(start+9)+':'+col[k]+str(start+9)+')}', percent_format)
-        worksheet.write(col[num_years]+str(start+2), -data_dict["depreciation (unrecognized)"][num_years-1])
+            #####  TREND FIGURE  #####
+            worksheet.write("A"+str(start), "HISTORICAL DATA FOR " + stock, bold)
+            worksheet.write("A"+str(start+1), "EBITDA")
+            worksheet.write("A"+str(start+2), "Depreciation*")
+            worksheet.write("A"+str(start+3), "Net available for bond interest (EBIT)")
+            worksheet.write("A"+str(start+4), "Common shares outstanding")
+            worksheet.write("A"+str(start+5), "Earned per share of common stock")
+            worksheet.write("A"+str(start+6), "Owners Earnings per share")
+            worksheet.write("A"+str(start+7), "Earned per share of common stock growth")
+            worksheet.write("A"+str(start+8), "Owners Earnings per share growth")
+            worksheet.write("A"+str(start+9), "Croic")
+            k=1
+            #print num_years
+            while k<num_years:
+                worksheet.write(col[k]+str(start+1), get_db_data(cur, "ebitda_is", index)[k], num_format)
+                worksheet.write(col[k]+str(start+2), get_db_data(cur, "depreciation_and_amortization_cf", index)[k], num_format)
+                worksheet.write_formula(col[k]+str(start+3), '{='+col[k]+str(start+1)+'-'+col[k]+str(start+2)+'}', num_format)
+                worksheet.write(col[k]+str(start+4), get_db_data(cur, "weighted_average_shares_outstanding_diluted_is", index)[k], num_format)
+                worksheet.write_formula(col[k]+str(start+5), '{='+col[k]+str(start+3)+'/'+col[k]+str(start+4)+'}', num_format)
+                worksheet.write_formula(col[k]+str(start+6), '{='+str(get_db_data(cur, "oe", index)[k])+'/'+str(col[k])+str(start+4)+'}', num_format)
+                worksheet.write(col[k]+str(start+9), get_db_data(cur, "croic", index)[k], percent_format)
+                k=k+1
+            print_multi_year(start+7,start+5,worksheet, percent_format)
+            print_multi_year(start+8,start+6,worksheet, percent_format)
+            worksheet.write_formula(col[k]+str(start+7), '{=MEDIAN(B'+str(start+7)+':'+col[k-1]+str(start+7)+')}', percent_format)
+            worksheet.write_formula(col[k]+str(start+8), '{=MEDIAN(B'+str(start+8)+':'+col[k-1]+str(start+8)+')}', percent_format)
+            worksheet.write_formula(col[k]+str(start+9), '{=MEDIAN(B'+str(start+9)+':'+col[k-1]+str(start+9)+')}', percent_format)
+            #worksheet.write(col[num_years]+str(start+2), -data_dict["depreciation (unrecognized)"][num_years-1])
 
-        #########NEED TO FIGURE OUT WHAT TO DO WITH LESS THAN 10 yrs of data when computing growth rates
+            #########NEED TO FIGURE OUT WHAT TO DO WITH LESS THAN 10 yrs of data when computing growth rates
 
-        ##### Growth ####
-        worksheet.write_formula(col[i]+'69', '{=MEDIAN(B'+str(start+7)+':K'+str(start+7)+')}', percent_format)
-        worksheet.write_formula(col[i]+'70', '{=MEDIAN(B'+str(start+8)+':K'+str(start+8)+')}', percent_format)
-        worksheet.write_formula(col[i]+'71', '{=MEDIAN(B'+str(start+9)+':K'+str(start+9)+')}', percent_format)
-        i=i+1
-        start = start+11
+            ##### Growth ####
+            worksheet.write_formula(col[i]+'69', '{=MEDIAN(B'+str(start+7)+':L'+str(start+7)+')}', percent_format)
+            worksheet.write_formula(col[i]+'70', '{=MEDIAN(B'+str(start+8)+':L'+str(start+8)+')}', percent_format)
+            worksheet.write_formula(col[i]+'71', '{=MEDIAN(B'+str(start+9)+':L'+str(start+9)+')}', percent_format)
+            i=i+1
+            start = start+11
+    except lite.Error, e:
+        print 'Error %s:' %e.args[0]
+        sys.exit(1)
+    finally:
+        if con:
+            con.close()
     workbook.close()
 
-def plot_breakdown_of_croic():
-    my_creds = plotly.tools.get_credentials_file()
-    plotly.plotly.sign_in(my_creds['username'], my_creds['api_key'])
-    negative_income = 0
-    stock_symbols = ["GILD", "EME"]
-    for stock in stock_symbols:
-        data_dict = webscrapper.load_data_from_pickle(stock)
-        print data_dict["owners earnings"]
-        plot_data_dict = {}
-        num_years = len(data_dict["interest expense"])
-        print data_dict["total common shares out"][num_years-1]
-        i = 0
-        plot_data_dict["numerator"]=[]
-        plot_data_dict["denominator"]=[]
-        plot_data_dict["year end date"]=[]
-        plot_data_dict["owners earnings"]=[]
-        total_capex = 0
-        net_earnings = 0
-        while i<num_years:
-            plot_data_dict["numerator"].append(0)
-            plot_data_dict["denominator"].append(0)
-            plot_data_dict["owners earnings"].append(0)
-            plot_data_dict["year end date"].append("")
-            total_capex = total_capex- data_dict["purchase of property, plant & equipment"][i]
-            net_earnings = net_earnings + data_dict["net income (continuing operations)"][i]
-            i=i+1
-        i=0
-        while i<num_years:
-            excess_cash = data_dict["total current liabilities"][i]-data_dict["total current assets"][i]
-            if excess_cash <0:
-                excess_cash = 0
-                plot_data_dict["year end date"][i]=data_dict["year end date"][i]
-                plot_data_dict["owners earnings"][i]=data_dict["owners earnings"][i]
-                plot_data_dict["numerator"][i]=data_dict["operating income"][i]-data_dict["income taxes"][i]
-            if plot_data_dict["numerator"][i]<0:
-                negative_income=negative_income+1
-                plot_data_dict["denominator"][i]=data_dict["total equity"][i]+data_dict["total liabilities"][i]-data_dict["total current liabilities"][i]-(data_dict["cash & equivalents"][i]-excess_cash)
-
-			  #cash flow
-            i=i+1
-        if not(negative_income == num_years):
-			  i=0
-			  key_list = plot_data_dict.keys()
-			  trace_list=[]
-			  for key in key_list:
-				    if not(key=="year end date"):
-					  trace = Scatter(x=plot_data_dict["year end date"],y=plot_data_dict[key], name=key, xaxis ='x1', yaxis='y2')
-					  trace_list.append(trace)
-			  key = "croic"
-			  trace = Scatter(x=data_dict["year end date"],y=data_dict[key], name=key, xaxis ='x1', yaxis='y1')
-			  trace_list.append(trace)
-			  my_data = Data(trace_list)
-			  my_layout = Layout(yaxis=YAxis(domain=[0, 0.45]),yaxis2=YAxis(domain=[0.5,1]))
- 			  my_fig = Figure(data=my_data, layout=my_layout)
-			  py.plot(my_fig)
-
-					#else:
-			  #print "negative income"
-        print "Cash Flow Statement"
-        print "10yr capex/10 yr net earnings = "+str(total_capex*100/net_earnings)+"<50% is good and <25% signals a business with a moat"
-
 def run():
+  #get_industry_symbols()
   graham_analysis()
 
+<<<<<<< HEAD
+=======
+
+>>>>>>> in_depth_morningstar
 if __name__ == "__main__":
 	run()
